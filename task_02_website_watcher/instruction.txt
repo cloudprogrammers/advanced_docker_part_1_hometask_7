@@ -1,0 +1,1 @@
+docker run -d --name mailer -e SMTP_USER='apikey' -e SMTP_PASSWORD='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' -e SMTP_SERVER='smtp.sendgrid.net' -e SMTP_PORT='587'
