@@ -358,7 +358,7 @@ Just as before, your job now is to make Dockerfile working. Fill all the `___ __
 First, build and tag (assign name) the image. To do it, navigate to the directory, where Dockerfile is, and issue command 
 
 ```
-docker build -t nginx_service .
+docker build -t nginx-service .
 ```
 
 After above command passes succesfuly, we can verify that image has been built by listing all the images:
@@ -368,7 +368,7 @@ docker images
 ```
 When we find our image on the list, it's time to launch the container from the image we have built. 
 ```
-docker run -d --rm -p 80:80 -p 443:443 nginx_service
+docker run -d --rm -p 80:80 -p 443:443 nginx-service
 ```
 
 As a reminder, we `run` the container with `-d`, meaning in `detached` mode. We will not see any container logs or any output from it, as `detached` means it is running in the background.
@@ -386,20 +386,22 @@ The mailer service is responsible only for sending emails, so for the sake of si
 2. **Steps**: 
  - Create a bash script `healthcheck.sh` that uses curl to check the HTTP status code from the Nginx server.
  ```
- #!/bin/bash
+#!/bin/bash
+# Continuously check the status of the Nginx server and send email alerts if it's down
 
 while true; do
-  response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost)
-  if [ "$response" -ne 200 ]; then
-    echo "Subject: Nginx Server Down" | sendmail -v your-email@example.com
-    echo "Nginx server down, alert sent" >> /var/log/nginx_watcher.log
+  if ! curl -s http://nginx; then # ENSURE nginx is in the same Docker network!
+    #echo "Subject: Alert - Nginx Down" | sendmail -f office@cloudprogrammers.pl -v mateuszpoland6@gmail.com
+    echo "Nginx is down. An alert email has been sent." >> /var/log/nginx_watcher.log
   else
-    echo "Nginx server is running smoothly" >> /var/log/nginx_watcher.log
+    echo "Nginx is running." >> /var/log/nginx_watcher.log
   fi
-  sleep 30
+  sleep 60  # check every minute
 done
  ```
  - Create Dockerfile
+```
+```
  - Build Dockerfile with mailer and watcher combined into one service. `cd` into `mailer_service` (you can rename it into `watcher_service`) and run:
  ```
  docker build -t mailer-service \
@@ -411,9 +413,50 @@ done
 
 Remeber to substitute the values to proper username, your SendGrid API key and email.
 
+## TASK 5: Tie both containers in the same Docker network
+**Introduction to Docker Networking**: 
+Docker containers can communicate with each other and the outside world through networks. By default, Docker provides three network types: `bridge`, `none,` and `host`. Docker uses a networking model to manage the communication between containers and the outside world. Containers can use different types of networks to communicate, each tailored for specific use cases:
+1. **Bridge Network:** This is the default network type when you run a container without specifying a --network. It uses a software bridge which allows containers connected to the same bridge network to communicate with each other. Containers can also access the external world via NAT (Network Address Translation) on the host system. However, containers on different bridge networks cannot communicate directly without routing.
+If you have two containers on the default bridge network and they need to communicate, they can do so using the internal IPs assigned by Docker. However, if you have containers on different user-defined bridge networks, they can communicate by their container names thanks to DNS resolution provided by Docker.
+2. **None Network:** Using this network, a container will not have any access to the external network or other containers. It is isolated from all networking.
+3. **Host Network:** Containers on the host network bypass Docker’s networking and use the host’s networking directly. This means there's no network isolation between the host machine and the containers.
+4. **Overlay Network:** Used in Docker Swarm and Kubernetes, overlay networks connect multiple Docker daemons together and enable swarm services to communicate with each other. Overlay networks encapsulate network traffic in a virtual network that spans across all the nodes participating in the swarm.
+
+Let's get over a quick example:
+- List all networks:
 ```
-docker run -d --name mailer -p "587:587" mailer-service
+docker network ls
 ```
+- Inspect a specific network:
+```
+docker network inspect bridge
+```
+
+For a deeper understanding of Docker networking, refer to the [Docker networking documentation](https://docs.docker.com/network/). This comprehensive guide covers all network types, their use cases, and configuration options.
+
+Now, we want to be able to check the `nginx` container status from within `mailer` service. To do that, we need to be sure both containers are in the same network. 
+**Step 1: Create a User-Defined Network**
+Make sure that containers are not running. List them and stop them if necessary. Before running your containers again, create a custom network. This will allow your containers to communicate by name and enable better isolation and management of your Docker environment.
+
+```
+docker network create <my-custom-network>
+```
+You can name the network however you wish. In our case it's just `nginx-mailer-network`.
+
+**Step 2: Run both containers in the same, custom defined network.**
+
+```
+docker run -d --rm --network nginx-mailer-network -p 80:80 -p 443:443 --name nginx nginx-service
+docker run -d --rm --network nginx-mailer-network --name mailer -p "587:587" mailer-service
+```
+
+It's now a good time to verify our custom network. Execute:
+```
+docker network inspect nginx-mailer-network
+```
+And check whether both containers appear inside the same network. 
+
+
 
 # Key Points to Remember
 
